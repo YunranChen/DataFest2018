@@ -1,0 +1,173 @@
+---
+title: "datafest"
+author: "Rui Wang"
+date: "4/7/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(coda)
+library(ggplot2)
+```
+
+```{r}
+load("useme_mat.Rdata") 
+data_jags = useme_mat %>% 
+  tbl_df()
+load(file = "y.Rdata")
+clicks = y
+ame=colnames(data_jags) 
+colnames(data_jags)=c(ame[1:3],"highschool","college",ame[6:15])
+data_jags = data_jags %>% 
+  mutate(click = clicks)
+colnames(data_jags)
+```
+
+
+```{r}
+job_jags = "model{
+  for(i in 1:length(click)) {
+    click[i] ~ dnorm(mu[i],tau)
+    mu[i] = alpha_c[company_index[i]] + beta_c1[company_index[i]] * avgrate[i]+ 
+            beta_c2[company_index[i]] * numReviews[i] + beta_j1 *supervisingJob[i] +
+            beta_j2 *highschool[i] + beta_j3 *licenseRequiredJob[i] +beta_j4 *college[i]+
+            beta_j5 *city_rank2[i] + beta_j6 *city_rank3[i] + beta_j7 *city_rank4[i]+
+             beta_j8 *city_rank5[i] + beta_j9 *city_rank6[i] +  beta_j10 *meansalary[i]+
+           beta_j11 *meanexp[i]+beta_j12 *meanword[i]
+    y_pred[i] ~ dnorm(mu[i], tau)
+}
+sigma ~ dunif(0, 100) 
+tau = 1/(sigma*sigma)
+
+for(j in 1:15) {
+    alpha_c[j] ~ dnorm(beta_alpha, tau_alpha)
+    beta_c1[j] ~ dnorm(beta_beta, tau_beta)
+    beta_c2[j] ~ dnorm(beta_beta,tau_beta)
+}
+
+beta_j1 ~ dnorm(beta_beta, tau_beta)
+beta_j2 ~ dnorm(beta_beta, tau_beta)
+beta_j3 ~ dnorm(beta_beta, tau_beta)
+beta_j4 ~ dnorm(beta_beta, tau_beta)
+beta_j5 ~ dnorm(beta_beta, tau_beta)
+beta_j6 ~ dnorm(beta_beta, tau_beta)
+beta_j7 ~ dnorm(beta_beta, tau_beta)
+beta_j8 ~ dnorm(beta_beta, tau_beta)
+beta_j9 ~ dnorm(beta_beta, tau_beta)
+beta_j10 ~ dnorm(beta_beta, tau_beta)
+beta_j11 ~ dnorm(beta_beta, tau_beta)
+beta_j12 ~ dnorm(beta_beta, tau_beta)
+
+  
+beta_alpha ~ dnorm(0,1/10000)
+beta_beta ~ dnorm(0,1/10000)  
+
+ 
+
+  sigma_alpha ~ dunif(0, 100) 
+  tau_alpha = 1/(sigma_alpha*sigma_alpha)
+
+  sigma_beta ~ dunif(0, 100) 
+  tau_beta = 1/(sigma_beta*sigma_beta)
+}"
+```
+
+
+```{r echo=FALSE, include=FALSE}
+nburn=1000; niter=5000
+
+m = rjags::jags.model(
+  textConnection(job_jags), 
+  data = data_jags, quiet = TRUE,
+  n.chains = 2
+) 
+
+update(m, n.iter=nburn, progress.bar="none")
+
+sleep_ris_samp = rjags::coda.samples(
+  m, variable.names=c("alpha_c", "beta_c1", "beta_c2",
+                      "beta_j1","beta_j2","beta_j3",
+                      "beta_j4","beta_j5","beta_j6",
+                      "beta_j7","beta_j8","beta_j9",
+                      "beta_j10","beta_j11","beta_j12",
+                      "beta_alpha", "beta_beta", 
+                      "sigma", "sigma_alpha", "sigma_beta",
+                      "y_pred", "mu"), 
+  n.iter=niter, progress.bar="none"
+)
+
+effectiveSize(sleep_ris_samp)
+```
+
+
+```{r}
+library(ggplot2)
+sleep_ris_samp %>%
+  window(thin=10) %>%
+  tidybayes::gather_samples(beta_j1) %>%
+  ungroup() %>%
+  ggplot(aes(x=.iteration, y=estimate, color=as.factor(.chain))) +
+    geom_line(alpha=0.5) +
+    facet_grid(term~., scale="free_y") +
+    labs(color="chain", x="iteration")
+```
+
+
+
+
+```{r}
+
+data_company = sleep_ris_samp[1] %>%
+  tidybayes::gather_samples(beta_c1[i],beta_c2[i]) %>%
+  ungroup() %>%
+  mutate(full_term = paste0(term,"[",i,"]") %>% forcats::as_factor())
+  
+company_names <- c(
+                    `beta_c1` = "Rate",
+                    `beta_c2` = "Number of review"
+                    )
+png(width=800,pointsize=40, filename = "compnay_coefficient.png")
+ggplot(data_company,aes(group=i, x=i, y=estimate)) +
+    geom_boxplot() +
+    facet_grid(term~., scale="free_y",labeller = as_labeller(company_names))+
+    xlab("company")+
+  theme_gray(base_size=20)
+```
+
+
+
+```{r}
+beta_job  =sleep_ris_samp[1] %>%
+  window(thin=10) %>%
+  tidybayes::gather_samples(beta_j1,beta_j2,beta_j3,beta_j4,beta_j5,beta_j6,beta_j7,beta_j8,beta_j9,
+                            beta_j10,beta_j11,beta_j12)
+beta_rank = beta_job %>% 
+  filter(term %in% c("beta_j5","beta_j6","beta_j7","beta_j8","beta_j9")) %>% 
+  
+
+beta_other =  beta_job %>% 
+  filter(term %in% c("beta_j1","beta_j2","beta_j3","beta_j4","beta_j10","beta_j11","beta_j12"))
+```
+
+
+
+
+```{r}
+png(width=700,pointsize=50, filename = "coefficient_city.png")
+ggplot(beta_rank,aes(x = term,y = estimate)) +
+  geom_boxplot()+
+  xlab("coefficient")+
+  scale_x_discrete(labels = c('rank2','rank3','rank4',"rank5","rank6"))+
+  theme_gray(base_size=20)
+
+png(width=700,pointsize=20, filename = "coefficient_other.png")
+ggplot(beta_other,aes(x = term,y = estimate)) +
+  geom_boxplot()+
+  xlab("coefficient")+
+  scale_x_discrete(labels = c('supervised','salary','experienced',"wordcount","high school","lisense","college"))+
+  theme_gray(base_size=20)
+  
+```
+
