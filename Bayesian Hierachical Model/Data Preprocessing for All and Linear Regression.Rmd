@@ -1,0 +1,195 @@
+---
+title: "Yunran"
+author: "YunranChen"
+date: "4/7/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(stringr)
+setwd("/Users/yunranchen/GoDuke/18Spring/DataFest")
+library(tibble)
+library(readr)
+#data = read_csv("datafest2018.csv")
+#save(data, file="datafest.Rdata")
+load(file="datafest.Rdata")
+library(dplyr)
+#install.packages("pryr")
+library(pryr)
+library(purrr)
+library(magrittr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+#set.seed(123)
+#data_sub = data %>% sample_frac(0.2)
+#save(data_sub, file="datafest_sub.Rdata")
+#load(file="datafest_sub.Rdata")
+```
+
+#data_usa
+
+```{r}
+data_usa=data_sub%>%filter(country%in%c("US"))%>%mutate(stateProvince=as.factor(stateProvince),city=as.factor(city),industry=as.factor(industry),normTitle=as.factor(normTitle),normTitleCategory=as.factor(normTitleCategory),jobLanguage=as.factor(jobLanguage),country=as.factor(country),salaryCurrency=as.factor(salaryCurrency),companyId=as.factor(companyId))
+
+data_usa$educationRequirement[data_usa$educationRequirement=="1"]="High school"
+data_usa$educationRequirement[data_usa$educationRequirement=="2"]="Higher education"
+data_usa$educationRequirement[data_usa$educationRequirement=="0"]="None"
+data_usa=data_usa%>%mutate(educationRequirement=factor(educationRequirement,levels=c("None","High school","Higher education")))
+data_usa=data_usa %>% mutate(category=NA)
+data_usa$category[data_usa$normTitleCategory%in%c("agriculture", "mining")]="Materials"
+data_usa$category[data_usa$normTitleCategory%in%c("food", "retail", "warehouse", "personal")]="Consumer_goods"
+data_usa$category[data_usa$normTitleCategory%in%c("install","sanitation", "driver", "service", "media", "education", "arts", "sports", "legal", "military", "customer")]="Consumer_services"
+data_usa$category[data_usa$normTitleCategory%in%c("admin", "sales", "management", "math", "finance", "marketing", "accounting", "hr", "socialscience","insurance","realestate")]="Financials"
+data_usa$category[data_usa$normTitleCategory%in%c("mednurse", "meddr", "care", "medtech", "therapy", "meddental", "childcare", "pharmacy", "veterinary", "hospitality", "medinfo")]="Health_care"
+data_usa$category[data_usa$normTitleCategory%in%c("manufacturing", "arch", "construction", "transport", "aviation")]="Industries"
+data_usa$category[data_usa$normTitleCategory%in%c("engid", "engchem")]="Oil_Gas"
+data_usa$category[data_usa$normTitleCategory%in%c("techsoftwa", "science", "engmech", "tech")]="Technology"
+data_usa$category[data_usa$normTitleCategory%in%c("techinfo", "techhelp","engelectric")]="Telecommunications"
+data_usa$category[data_usa$normTitleCategory%in%c("project", "protective", "engcivil")]="Utilities"
+data_usa$category=as.factor(data_usa$category)
+```
+
+```{r}
+summary(data_usa%>%select(-jobId))
+data_usa_h=data_usa%>%select(-salaryCurrency,-descriptionCharacterLength)%>%filter(jobLanguage=="EN")
+data_usa_h%>%nrow()
+data_usa_h=data_usa_h%>%mutate(id=1:2830933)
+data_usa_h=data_usa_h%>%group_by(jobId)%>%mutate(dayagemin=min(jobAgeDays))%>%filter(dayagemin==0)%>%ungroup()
+data_usa_h%>%group_by()
+```
+
+
+#hierachical model
+
+```{r}
+data_usa%>%group_by(category,companyId,nor,)
+```
+
+
+
+
+
+
+```{r}
+#save(data_usa, file="datafest_usa.Rdata")
+#load(file="datafest_usa.Rdata")
+##read pop_rank
+pop_rank=read.csv(file="pop_ranknew.csv",stringsAsFactors = FALSE,encoding = "UTF-8")%>%as.tibble()%>%select(city,rank)
+pop_rank=pop_rank%>%group_by(city)%>%summarise(min_rank=min(rank))
+pop_rank=unique(pop_rank)
+
+ pop_rank$city=pop_rank$city %>% 
+  str_replace_all(.,"\\."," ") %>%
+  str_trim(.) %>% ##get rid of the space at the beginning and the end
+  str_replace_all(.,"[:blank:]+"," ") %>%  ## get rid of multiple space, [:blank:] containing space and tab
+   str_replace(.,"^St. ","saint ")%>%
+  tolower(.) %>% # From upper alphabet to lower
+  str_replace(.,"[:punct:]+$","") %>%  #All punctuation
+  str_replace(.," county$| city$| town$| village$| (balance)$| (pt.)$| township$| borough$","") %>%
+   str_replace(.,"^township of ","")%>%
+   str_replace(.," county$| city$| town$| village$| (balance)$| (pt.)$","") %>%
+  str_replace(.,"[0-9]+$","")
+ pop_rank=pop_rank%>%group_by(city)%>%summarise(min_rank=min(min_rank))
+pop_rank=unique(pop_rank)
+ nrow(pop_rank)
+data_usa$city=data_usa$city%>%str_replace_all(.,"\\."," ") %>%
+  str_trim(.) %>% ##get rid of the space at the beginning and the end
+  str_replace_all(.,"[:blank:]+"," ") %>%  ## get rid of multiple space, [:blank:] containing space and tab
+  tolower(.) %>% # From upper alphabet to lower
+  str_replace(.,"[:punct:]+$","") %>%  #All punctuation
+  str_replace(.," county$| city$| town$| village$| (balance)$| (pt.)$| township$| borough$","") %>%
+  str_replace(.,"^township of ","")%>%
+  str_replace(.,"[0-9]+$","")
+data_usa_n=left_join(data_usa,pop_rank,by="city")
+save(data_usa_n, file="datafest_usa_n.Rdata")
+load(file="datafest_usa_n.Rdata")
+write.csv(x = data_usa_n,file = "datausan.csv")
+```
+
+```{r}
+load(file="datafest_usa_n.Rdata")
+```
+
+#part2:regression
+
+```{r}
+#install.packages("glmnet")
+library(glmnet)
+#get rid of NA for normTitleCategory,supervisingJob,licenseRequiredJob
+#no use experienceRequired,numReviews,normTitle ,city,educationRequirement+industry+stateProvince,
+#no cities only stateProvince
+data_usa_s=data_usa_n%>%select(category,avgOverallRating,descriptionCharacterLength, descriptionWordCount,estimatedSalary,supervisingJob,licenseRequiredJob, jobAgeDays, clicks,min_rank,educationRequirement,experienceRequired,numReviews)%>%mutate(city_rank=as.factor(min_rank))%>%select(-min_rank)
+data_usa_s$numReviews[is.na(data_usa_s$numReviews)] = mean(data_usa_s$numReviews, na.rm = TRUE)
+data_usa_s$experienceRequired[is.na(data_usa_s$experienceRequired)] = mean(data_usa_s$experienceRequired, na.rm = TRUE)
+
+```
+
+```{r}
+#save(data_usa_s, file="datafest_usa_s.Rdata")
+load("datafest_usa_s.Rdata")
+#set.seed(123)
+#data_usa_ss=data_usa_s%>% sample_frac(0.5)
+```
+
+```{r}
+lm_S=lm(clicks~city_rank+category+avgOverallRating+ descriptionWordCount+estimatedSalary+supervisingJob+licenseRequiredJob+jobAgeDays+educationRequirement+experienceRequired+numReviews,data = data_usa_s)
+summary(lm_S)
+
+lm_p=glm(clicks~city_rank+category+avgOverallRating+ descriptionWordCount+estimatedSalary+supervisingJob+licenseRequiredJob+jobAgeDays+educationRequirement+experienceRequired+numReviews,data = data_usa_s,family = "poisson")
+summary(lm_p)
+lm_loglog=lm(log1p(clicks)~city_rank+category+avgOverallRating+ descriptionWordCount+log1p(estimatedSalary)+supervisingJob+licenseRequiredJob+jobAgeDays+educationRequirement+experienceRequired+numReviews,data = data_usa_s)
+summary(lm_loglog)
+
+lm_loglogl=lm(log1p(clicks)~city_rank+category+avgOverallRating+ log1p(descriptionWordCount)+log1p(estimatedSalary)+supervisingJob+licenseRequiredJob+jobAgeDays,data = data_usa_s)
+summary(lm_loglogl)
+
+xfactors = model.matrix(clicks~city_rank+category,data = data_usa_s)[, -1]
+nrow(xfactors)
+nrow(data_usa_s)
+x= as.matrix(data.frame(data_usa_s%>%select(avgOverallRating,descriptionCharacterLength, descriptionWordCount,estimatedSalary,supervisingJob,licenseRequiredJob, jobAgeDays), xfactors))%>%na.omit()
+
+library(glmnet)
+cvfit = cv.glmnet(x = x, y = data_usa_s$clicks)
+plot(cvfit)
+cvfit$lambda.min
+coef(cvfit, s = "lambda.min")
+
+##read pop_rank
+pop_rank=read.csv(file="pop_ranknew.csv",stringsAsFactors = FALSE)%>%as.tibble()%>%select(city,rank)
+data_usa%>%select(city)%>%arrange%>%View()
+pop_rank%>%View()
+```
+
+
+
+#suhang
+
+```{r}
+require(gdata)
+df = read.xls ("FF.xlsx", sheet = 1, header = TRUE)
+dataDJ=as.tibble(df)
+dataDJ=dataDJ%>%mutate(date=ymd(date))
+data_usa$estimatedSalary[(data_usa$salaryCurrency=="CAD")&(!is.na(data_usa$salaryCurrency))]=data_usa$estimatedSalary/1.2
+predj=data_usa%>%group_by(date,category)%>%summarise(tclicksc=mean(estimatedSalary,na.rm = TRUE))
+data_cc=spread(data = predj,key = category,value = tclicksc)
+names(data_cc)=c("date",paste0(names(data_cc)[-1],"_s"))
+predj1=data_usa%>%group_by(date,category)%>%summarise(tclicksc=sum(clicks,na.rm = TRUE))
+data_ss=spread(data = predj1,key = category,value = tclicksc)
+names(data_ss)=c("date",paste0(names(data_ss)[-1],"_c"))
+data=bind_cols(data_cc,data_ss[,-1])
+dataFFs=left_join(data,dataDJ,by= "date")
+#install.packages("xlsx")
+#install.packages("rJava")
+#library("rJava")
+#library("xlsx")
+
+#write.xlsx(x = dataDJs, file = "datadj.xlsx",row.names = FALSE)
+write.csv(x = dataFFs,file = "dataff.csv")
+```
+
+

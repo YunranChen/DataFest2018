@@ -1,0 +1,158 @@
+---
+title: "bayes"
+author: "YunranChen"
+date: "4/7/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(stringr)
+#setwd("/Users/yunranchen/GoDuke/18Spring/DataFest")
+library(tibble)
+library(readr)
+#data = read_csv("datafest2018.csv")
+#save(data, file="datafest.Rdata")
+#load(file="datafest.Rdata")
+library(dplyr)
+#install.packages("pryr")
+library(pryr)
+library(purrr)
+library(magrittr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+```
+
+```{r}
+data_usa=data%>%filter(country%in%c("US"))%>%select(-salaryCurrency,-descriptionCharacterLength)%>%filter(jobLanguage=="EN")
+data_flag=data_usa%>%group_by(jobId)%>%summarise(dayagemin=min(jobAgeDays),dayagemax=max(jobAgeDays,tc=sum(clicks)))
+data_usa_f=left_join(data_usa,data_flag,by="jobId")#
+data_usa_f_s=data_usa_f%>%filter(dayagemin)
+data_flag1=data_usa_f_s%>%group_by(jobId)%>%summarise(count=n())
+data_usa_f_s=left_join(data_usa_f_s,data_flag1,by="jobId")#
+data_usa_f_s=data_usa_f_s%>%filter(count>1)
+data_usa_f_s%>%pull(industry)%>%table()
+
+data_usa_f_s%>%filter(industry=="BANKS_AND_FINANCIAL_SERVICES")%>%group_by(companyId)%>%summarise(ccount=length(unique(jobId)))%>%View()
+
+
+data_usa_f=data_usa_f_s
+data_usa_s=data_usa_f%>%na.omit()
+save(data_usa_s, file="bayes_data_s.Rdata")
+483047/17635296
+data_bayes=data_usa_s%>%mutate(stateProvince=as.factor(stateProvince),city=as.factor(city),industry=as.factor(industry),normTitle=as.factor(normTitle),normTitleCategory=as.factor(normTitleCategory),jobLanguage=as.factor(jobLanguage),country=as.factor(country),companyId=as.factor(companyId))
+
+data_bayes$educationRequirement[data_bayes$educationRequirement=="1"]="High school"
+data_bayes$educationRequirement[data_bayes$educationRequirement=="2"]="Higher education"
+data_bayes$educationRequirement[data_bayes$educationRequirement=="0"]="None"
+data_bayes=data_bayes%>%mutate(educationRequirement=factor(educationRequirement,levels=c("None","High school","Higher education")))
+data_bayes=data_usa_f_s
+data_bayes=data_bayes %>% mutate(category=NA)
+data_bayes%>%filter(companyId=="company00090")%>%select(companyId,category)%>%unique()%>%View()
+data_bayes$category[data_bayes$normTitleCategory%in%c("agriculture", "mining")]="Materials"
+data_bayes$category[data_bayes$normTitleCategory%in%c("food", "retail", "warehouse", "personal")]="Consumer_goods"
+data_bayes$category[data_bayes$normTitleCategory%in%c("install","sanitation", "driver", "service", "media", "education", "arts", "sports", "legal", "military", "customer")]="Consumer_services"
+data_bayes$category[data_bayes$normTitleCategory%in%c("admin", "sales", "management", "math", "finance", "marketing", "accounting", "hr", "socialscience","insurance","realestate")]="Financials"
+data_bayes$category[data_bayes$normTitleCategory%in%c("mednurse", "meddr", "care", "medtech", "therapy", "meddental", "childcare", "pharmacy", "veterinary", "hospitality", "medinfo")]="Health_care"
+data_bayes$category[data_bayes$normTitleCategory%in%c("manufacturing", "arch", "construction", "transport", "aviation")]="Industries"
+data_bayes$category[data_bayes$normTitleCategory%in%c("engid", "engchem")]="Oil_Gas"
+data_bayes$category[data_bayes$normTitleCategory%in%c("techsoftwa", "science", "engmech", "tech")]="Technology"
+data_bayes$category[data_bayes$normTitleCategory%in%c("techinfo", "techhelp","engelectric")]="Telecommunications"
+data_bayes$category[data_bayes$normTitleCategory%in%c("project", "protective", "engcivil")]="Utilities"
+data_bayes$category=as.factor(data_bayes$category)
+```
+
+##with companyId
+
+```{r}
+cpns=data_bayes%>%filter(category=="Financials")%>%group_by(companyId)%>%summarise(ccount=length(unique(jobId)))%>%arrange(desc(ccount))%>%head(50)%>%pull(companyId)
+datame=data_bayes%>%filter(companyId%in%(cpns))
+datame%>%group_by(companyId)%>%summarise(nacount=sum(is.na(numReviews)),nnacount=sum(!is.na(numReviews)))%>%pull(nnacount)%>%sum()
+cpns15=datame%>%group_by(companyId)%>%summarise(nacount=sum(is.na(numReviews)),nnacount=sum(!is.na(numReviews)))%>%arrange(desc(nnacount))%>%head(15)%>%pull(companyId)
+datame=data_bayes%>%filter(companyId%in%(cpns15))
+#save(datame, file="datacpn15.Rdata")
+
+
+######################################
+pop_rank=read.csv(file="pop_ranknew.csv",stringsAsFactors = FALSE,encoding = "UTF-8")%>%as.tibble()%>%select(city,rank)
+pop_rank=pop_rank%>%group_by(city)%>%summarise(min_rank=min(rank))
+pop_rank=unique(pop_rank)
+
+ pop_rank$city=pop_rank$city %>% 
+  #str_replace_all(.,"\\."," ") %>%
+  str_trim(.) %>% ##get rid of the space at the beginning and the end
+  str_replace_all(.,"[:blank:]+"," ") %>%  ## get rid of multiple space, [:blank:] containing space and tab
+   str_replace(.,"^St. |^st ","saint ")%>%
+  tolower(.) %>% # From upper alphabet to lower
+  #str_replace(.,"[:punct:]+$","") %>%  #All punctuation
+  str_replace(.," county$| city$| town$| village$| (balance)$| (pt.)$| township$| borough$","") %>%
+   str_replace(.,"^township of |^balance of ","")%>%
+   str_replace(.," county$| city$| town$| village$| (balance)$| (pt.)$","") %>%
+  str_replace(.,"[0-9]+$","")
+ pop_rank=pop_rank%>%group_by(city)%>%summarise(min_rank=min(min_rank))
+pop_rank=unique(pop_rank)
+ nrow(pop_rank)
+datame$city=datame$city%>%str_replace_all(.,"\\."," ") %>%
+  str_trim(.) %>% ##get rid of the space at the beginning and the end
+  str_replace_all(.,"[:blank:]+"," ") %>%  ## get rid of multiple space, [:blank:] containing space and tab
+  tolower(.) %>% # From upper alphabet to lower
+  str_replace(.,"[:punct:]+$","") %>%  #All punctuation
+  str_replace(.," county$| city$| town$| village$| (balance)$| (pt.)$| township$| borough$","") %>%
+  str_replace(.,"^township of ","")%>%
+  str_replace(.,"[0-9]+$","")
+datame_r=left_join(datame,pop_rank,by="city")
+datame_r$min_rank[is.na(datame_r$min_rank)]=6
+datame_r$experienceRequired[is.na(datame_r$experienceRequired)]=0
+datame_r$supervisingJob[is.na(datame_r$supervisingJob)]=0
+datame_r$licenseRequiredJob[is.na(datame_r$licenseRequiredJob)]=0
+summary(datame_r)
+#save(datame_r, file="datacpn15combinecityrankandna.Rdata")
+load("datacpn15combinecityrankandna.Rdata")
+#######################################
+data_simple=datame_r%>%select(-country,-stateProvince,-city,-industry,-normTitle,-normTitleCategory,-jobLanguage,-category)
+data_simple=data_simple%>%mutate(companyId=as.factor(companyId),jobId=as.factor(jobId),educationRequirement=as.factor(educationRequirement))
+
+data_simple$educationRequirement[data_simple$educationRequirement=="1"]="High school"
+data_simple$educationRequirement[data_simple$educationRequirement=="2"]="Higher education"
+data_simple$educationRequirement[data_simple$educationRequirement=="0"]="None"
+data_simple=data_simple%>%mutate(educationRequirement=factor(educationRequirement,levels=c("None","High school","Higher education")))
+data_simple%>%summary()
+data_simple$educationRequirement[is.na(data_simple$educationRequirement)]="None"
+
+data_simple=data_simple%>%select(-dayagemax,-dayagemin,-count)
+data_simple%>%summary()
+maxflag=data_simple%>%group_by(jobId)%>%summarise(maxday=max(jobAgeDays)+1,tolclick=sum(clicks))%>%select(jobId,maxday,tolclick)
+a=left_join(data_simple,maxflag,by="jobId")
+data_simple=a%>%mutate(avg_click=tolclick/maxday)
+data_simple=data_simple%>%select(-tolclick,-maxday,-date,-localClicks)
+data_simple=data_simple%>%mutate(min_rank=as.factor(min_rank))%>%select(-jobAgeDays)
+data_simple=data_simple%>%select(-clicks)
+data_sn=data_simple%>%unique(.)%>%group_by(jobId)%>%summarise(avgrate=max(avgOverallRating),meansalary=mean(estimatedSalary),meanexp=mean(experienceRequired),meanword=mean(descriptionWordCount),city_rank=min(as.numeric(min_rank)))
+data_finalb=left_join(data_simple,data_sn,by="jobId")
+useme=data_finalb%>%select(-avgOverallRating,-estimatedSalary,-experienceRequired,-descriptionWordCount,-min_rank)%>%mutate(city_rank=as.factor(city_rank))%>%unique()
+useme=useme%>%mutate(company_index=as.numeric(companyId))
+companyids=useme%>%select(companyId,company_index)
+save(companyids, file="companyids.Rdata")
+useme=useme%>%select(-companyId,-jobId)
+useme=useme%>%select(-jobId)
+useme=useme%>%select(avg_click,numReviews,supervisingJob,licenseRequiredJob,educationRequirement,avgrate,meansalary,meanexp,meanword,city_rank, company_index)
+save(useme, file="useme_df.Rdata")
+useme_mat=model.matrix(avg_click~.,data = useme)[, -1]
+save(useme_mat, file="useme_mat.Rdata")
+y=useme%>%pull(avg_click)
+save(y,file="y.Rdata")
+cyr_useme=useme%>%select(-companyId)
+cyr_useme=cyr_useme%>%mutate(company_index=as.factor(company_index))
+```
+
+```{r}
+install.packages("lme4")
+library("lme4")
+suseme=scale(cyr_useme)
+trylmer=lmer(formula = log(avg_click) ~ 1 + (1 | company_index)+numReviews+supervisingJob+licenseRequiredJob+educationRequirement+(avgrate|company_index)+log(meansalary)+meanexp+meanword+city_rank, data=cyr_useme)
+
+summary(trylmer)
+```
+
+
