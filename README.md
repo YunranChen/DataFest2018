@@ -1,6 +1,9 @@
 # DataFest2018-Exceeding Indeed's Needs
+
 Data Analysis with 1 day and a half.
+
 Group H[x]H: Hang Su, Rui Wang, Xu Lu, Yunran Chen, Junhong Chen
+
 Institution: Duke University
 
 In this project, we focus on how Indeed can better serve its existing customers and possibly expand the boundary of data applications in the real market.
