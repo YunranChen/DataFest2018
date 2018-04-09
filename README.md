@@ -1,6 +1,6 @@
 # DataFest2018-Exceeding Indeed's Needs
 
-Data Analysis with 1 day and a half.
+Data Analysis within 1 day and a half.
 
 Group H[x]H: Hang Su, Rui Wang, Xu Lu, Yunran Chen, Junhong Chen
 
